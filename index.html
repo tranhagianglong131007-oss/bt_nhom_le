@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chuyến Bay Giải Cứu: Hộp Đen - Flight Simulator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Orbitron & Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Cockpit Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --hud-bg: rgba(18, 12, 14, 0.78);
+            --hud-border: rgba(255, 110, 64, 0.35);
+            --neon-green: #10b981;
+            --neon-red: #ef4444;
+            --neon-amber: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #140505;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+        }
+
+        .font-hud {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* Canvas full screen */
+        #gameCanvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            display: block;
+        }
+
+        /* Screen Flash Vignette Overlay (Red for Wrong, Green for Correct) */
+        #screenFlashOverlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 15;
+            transition: box-shadow 0.15s ease;
+        }
+
+        .red-alert-active {
+            animation: redPulse 0.45s ease-in-out 3;
+        }
+
+        @keyframes redPulse {
+            0%, 100% {
+                box-shadow: inset 0 0 90px 30px rgba(220, 38, 38, 0.15);
+                background-color: rgba(220, 38, 38, 0);
+            }
+            50% {
+                box-shadow: inset 0 0 160px 75px rgba(239, 68, 68, 0.9);
+                background-color: rgba(220, 38, 38, 0.25);
+            }
+        }
+
+        .green-flash-active {
+            animation: greenPulse 0.45s ease-in-out 2;
+        }
+
+        @keyframes greenPulse {
+            0%, 100% {
+                box-shadow: inset 0 0 80px 25px rgba(16, 185, 129, 0.1);
+                background-color: rgba(16, 185, 129, 0);
+            }
+            50% {
+                box-shadow: inset 0 0 150px 65px rgba(16, 185, 129, 0.85);
+                background-color: rgba(16, 185, 129, 0.22);
+            }
+        }
+
+        /* Screen Shake Animation */
+        .shake-intense {
+            animation: screenShake 0.55s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes screenShake {
+            10%, 90% { transform: translate3d(-4px, 3px, 0) rotate(-0.6deg); }
+            20%, 80% { transform: translate3d(6px, -4px, 0) rotate(0.8deg); }
+            30%, 50%, 70% { transform: translate3d(-8px, 5px, 0) rotate(-1deg); }
+            40%, 60% { transform: translate3d(8px, -3px, 0) rotate(0.7deg); }
+        }
+
+        /* HUD Glass Panel */
+        .hud-panel {
+            background: var(--hud-bg);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid var(--hud-border);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
+        }
+
+        /* Cockpit Tactile Buttons (Left Side 2x3 Grid like reference image) */
+        .cockpit-btn {
+            background: linear-gradient(145deg, rgba(35, 25, 28, 0.9), rgba(15, 10, 12, 0.95));
+            border: 1.5px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.15);
+            transition: all 0.18s ease;
+        }
+        .cockpit-btn:active {
+            transform: scale(0.92);
+        }
+        .cockpit-btn.active {
+            border-color: #34d399;
+            color: #34d399;
+            box-shadow: 0 0 14px rgba(16, 185, 129, 0.45), inset 0 0 8px rgba(16, 185, 129, 0.25);
+        }
+        .cockpit-btn.warn {
+            border-color: #f87171;
+            color: #f87171;
+            box-shadow: 0 0 14px rgba(239, 68, 68, 0.5);
+        }
+
+        /* Answer Buttons (Physical Cockpit Switches) */
+        .answer-btn {
+            background: linear-gradient(180deg, rgba(42, 30, 34, 0.92) 0%, rgba(22, 15, 18, 0.96) 100%);
+            border: 1.5px solid rgba(255, 140, 100, 0.28);
+            box-shadow: 0 4px 0 rgba(10, 5, 7, 0.9), 0 6px 15px rgba(0, 0, 0, 0.5);
+            transition: all 0.15s ease;
+        }
+        .answer-btn:hover:not(:disabled) {
+            border-color: rgba(251, 191, 36, 0.75);
+            background: linear-gradient(180deg, rgba(65, 42, 46, 0.95) 0%, rgba(32, 20, 24, 0.98) 100%);
+            transform: translateY(-1px);
+        }
+        .answer-btn:active:not(:disabled) {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 rgba(10, 5, 7, 0.9);
+        }
+        .answer-correct {
+            background: linear-gradient(180deg, rgba(6, 95, 70, 0.95) 0%, rgba(4, 65, 48, 0.98) 100%) !important;
+            border-color: #34d399 !important;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.65) !important;
+            color: #ecfdf5 !important;
+        }
+        .answer-wrong {
+            background: linear-gradient(180deg, rgba(153, 27, 27, 0.95) 0%, rgba(105, 18, 18, 0.98) 100%) !important;
+            border-color: #f87171 !important;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.75) !important;
+            color: #fef2f2 !important;
+        }
+
+        /* Fuel Bar Smooth Color Transition & Prominent Glow */
+        #fuelFill {
+            transition: height 0.55s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.55s ease, box-shadow 0.55s ease;
+        }
+
+        .fuel-panel-prominent {
+            background: rgba(12, 8, 10, 0.88);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 2px solid rgba(52, 211, 153, 0.55);
+            box-shadow: 0 0 28px rgba(16, 185, 129, 0.3), inset 0 0 14px rgba(0, 0, 0, 0.85);
+            transition: border-color 0.4s ease, box-shadow 0.4s ease;
+        }
+
+        /* Question Pop-up Entrance & Exit */
+        .question-modal-hidden {
+            opacity: 0;
+            transform: scale(0.92) translateY(12px);
+            pointer-events: none !important;
+        }
+
+        .question-modal-visible {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto !important;
+        }
+
+        /* Custom Scrollbar for Question Box on tiny screens */
+        .custom-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 120, 80, 0.4);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full overflow-hidden">
+
+    <!-- Main 2.5D/3D Storm & Aircraft Simulation Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Screen Flash Overlay (Green on Correct, Red on Wrong) -->
+    <div id="screenFlashOverlay"></div>
+
+    <!-- HUD LAYER (Active during flight) -->
+    <div id="hudLayer" class="relative z-10 w-full h-full pointer-events-none flex flex-col justify-between p-2 sm:p-4">
+
+        <!-- TOP HUD ROW -->
+        <div class="flex items-start justify-between w-full gap-2">
+            
+            <!-- Top Left: System Controls (Menu, Restart, Sound) -->
+            <div class="flex flex-col gap-2 pointer-events-auto">
+                <button id="btnMenu" title="Tạm dừng / Hướng dẫn" class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl hud-panel flex items-center justify-center text-slate-200 hover:text-amber-400 hover:border-amber-400/50 transition">
+                    <i class="fa-solid fa-bars text-lg"></i>
+                </button>
+                <button id="btnRestartTop" title="Khởi động lại chuyến bay" class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl hud-panel flex items-center justify-center text-slate-200 hover:text-amber-400 hover:border-amber-400/50 transition">
+                    <i class="fa-solid fa-rotate-right text-lg"></i>
+                </button>
+                <button id="btnSound" title="Bật / Tắt âm thanh buồng lái" class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl hud-panel flex items-center justify-center text-emerald-400 hover:border-emerald-400/50 transition">
+                    <i id="soundIcon" class="fa-solid fa-volume-high text-base"></i>
+                </button>
+            </div>
+
+            <!-- Top Center: Distance to Runway & Progress -->
+            <div class="flex flex-col items-center">
+                <div class="hud-panel px-3.5 py-1.5 sm:px-5 sm:py-2 rounded-xl flex items-center gap-2.5 border-amber-500/40">
+                    <i class="fa-solid fa-flag-checkered text-amber-400 text-base sm:text-lg"></i>
+                    <span id="distanceDisplay" class="font-hud font-bold text-base sm:text-xl tracking-wider text-white">5,000 M</span>
+                </div>
+                <!-- Mini Runway Progress Bar -->
+                <div class="w-36 sm:w-56 h-1.5 bg-black/60 rounded-full mt-1.5 overflow-hidden border border-white/15">
+                    <div id="runwayProgressBar" class="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all duration-500" style="width: 0%;"></div>
+                </div>
+                <div id="flightPhaseBadge" class="text-[10px] sm:text-xs font-semibold tracking-wider text-amber-200/90 mt-0.5 uppercase">
+                    Chặng <span id="questionCounterTop" class="text-white font-bold">1</span> / 20 • Đang bay tuần tra
+                </div>
+            </div>
+
+            <!-- Top Right: Green Circular Radar + Altitude + Airspeed Gauge -->
+            <div class="flex items-start gap-2 sm:gap-3">
+                <!-- Altitude & Airspeed Stack -->
+                <div class="flex flex-col items-end gap-1.5 sm:gap-2">
+                    <!-- Altitude Box -->
+                    <div class="hud-panel px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-xl flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrow-up text-emerald-400 text-xs sm:text-sm"></i>
+                        <span id="altitudeDisplay" class="font-hud font-bold text-xs sm:text-base text-white">2000 M</span>
+                    </div>
+                    <!-- Circular Airspeed Dial -->
+                    <div class="relative w-14 h-14 sm:w-20 sm:h-20 rounded-full hud-panel flex flex-col items-center justify-center border-2 border-slate-400/30">
+                        <canvas id="airspeedCanvas" class="w-full h-full rounded-full"></canvas>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center pt-3 sm:pt-4 pointer-events-none">
+                            <span id="speedValue" class="font-hud font-bold text-[11px] sm:text-sm text-white leading-none">215</span>
+                            <span class="text-[8px] sm:text-[9px] text-slate-300 uppercase">km/h</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Circular Green Rotating Radar (Corner) -->
+                <div class="relative w-20 h-20 sm:w-28 sm:h-28 rounded-xl hud-panel p-1 border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.25)]">
+                    <canvas id="radarCanvas" class="w-full h-full rounded-lg"></canvas>
+                    <div class="absolute bottom-1.5 left-2 text-[8px] sm:text-[9px] font-hud text-emerald-400/90 tracking-widest pointer-events-none">RDR-09</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MIDDLE SECTION: Left Cockpit Buttons | Center-Right Pop-up Question Console | Right Prominent Fuel Bar -->
+        <div class="flex items-center justify-between w-full my-auto gap-1 sm:gap-3">
+
+            <!-- Middle Left: 6 Decorative/Interactive Cockpit Switches (2 columns x 3 rows like reference image) -->
+            <div id="cockpitSwitchCluster" class="hidden xs:grid sm:grid grid-cols-2 gap-1.5 sm:gap-2 pointer-events-auto">
+                <button class="cockpit-btn active w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-slate-200 text-xs sm:text-base" title="Tháp điều khiển không lưu" onclick="toggleCockpitSwitch(this)">
+                    <i class="fa-solid fa-tower-broadcast"></i>
+                </button>
+                <button class="cockpit-btn active w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-slate-200 text-xs sm:text-base" title="Hệ thống bánh đáp" onclick="toggleCockpitSwitch(this)">
+                    <i class="fa-solid fa-plane-arrival"></i>
+                </button>
+                <button class="cockpit-btn w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-slate-200 text-xs sm:text-base" title="Hộp đen ghi âm" onclick="toggleCockpitSwitch(this)">
+                    <i class="fa-solid fa-microchip"></i>
+                </button>
+                <button class="cockpit-btn active w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-slate-200 text-xs sm:text-base" title="Dây an toàn phi hành đoàn" onclick="toggleCockpitSwitch(this)">
+                    <i class="fa-solid fa-user-shield"></i>
+                </button>
+                <button class="cockpit-btn active w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-slate-200 text-xs sm:text-base" title="Đèn pha phá sương mù" onclick="toggleCockpitSwitch(this)">
+                    <i class="fa-regular fa-lightbulb"></i>
+                </button>
+                <button class="cockpit-btn w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-slate-200 text-xs sm:text-base" title="Camera thân máy bay" onclick="toggleCockpitSwitch(this)">
+                    <i class="fa-solid fa-video"></i>
+                </button>
+            </div>
+
+            <!-- CENTER-RIGHT: Compact Pop-up Question Console (Appears only upon encountering an obstacle) -->
+            <div id="questionConsole" class="question-modal-hidden w-full max-w-[645px] ml-auto mr-2 sm:mr-4 hud-panel rounded-2xl p-5 sm:p-7 border-2 border-orange-500/50 transition-all duration-300">
+                <!-- Obstacle Header Badge -->
+                <div class="flex items-center justify-between gap-2 mb-3.5 pb-2.5 border-b border-white/15">
+                    <div class="flex items-center gap-2.5">
+                        <span id="obstacleIcon" class="w-9 h-9 rounded-lg bg-red-500/25 border border-red-500/50 flex items-center justify-center text-amber-400 text-base animate-pulse">
+                            <i class="fa-solid fa-bolt"></i>
+                        </span>
+                        <span id="obstacleTitle" class="text-xs sm:text-base font-hud uppercase tracking-wider text-amber-400 font-bold">
+                            CHƯỚNG NGẠI VẬT: MÂY DÔNG TÍCH ĐIỆN
+                        </span>
+                    </div>
+                    <span class="text-xs sm:text-sm font-hud px-3 py-1 rounded-lg bg-black/60 text-slate-200 border border-white/15 shrink-0">
+                        CÂU <span id="qIndexText" class="text-amber-400 font-bold text-sm sm:text-base">01</span>/20
+                    </span>
+                </div>
+
+                <!-- Question Prompt -->
+                <div class="max-h-36 sm:max-h-44 overflow-y-auto custom-scroll mb-4 pr-1">
+                    <p id="questionText" class="text-base sm:text-xl font-bold leading-snug text-white">
+                        Đang quét chướng ngại vật phía trước...
+                    </p>
+                </div>
+
+                <!-- 4 Answer Buttons (A, B, C, D) -->
+                <div id="answersGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
+                    <!-- Populated dynamically -->
+                </div>
+
+                <!-- Feedback Status Line -->
+                <div id="feedbackBanner" class="mt-3 min-h-[24px] text-center text-xs sm:text-sm font-semibold tracking-wide transition-opacity duration-200 opacity-0">
+                    Trạng thái bay ổn định
+                </div>
+            </div>
+
+            <!-- Middle Right: PROMINENT Vertical Fuel Gauge (1000 / 1000 -> 0, Green -> Amber -> Red) -->
+            <div id="fuelContainerPanel" class="fuel-panel-prominent flex flex-col items-center px-2.5 py-2.5 sm:px-3.5 sm:py-3 rounded-2xl pointer-events-auto shrink-0">
+                <div class="text-[9px] sm:text-[10px] font-hud font-bold text-amber-300 uppercase tracking-widest mb-0.5">
+                    NHIÊN LIỆU
+                </div>
+                <div class="text-xs sm:text-sm font-hud font-black text-white mb-1.5 tracking-tight drop-shadow">
+                    <span id="fuelText" class="text-emerald-400">1000</span><span class="text-[10px] text-slate-400">/1000</span>
+                </div>
+                <!-- Prominent Vertical Bar Container -->
+                <div class="relative w-7 sm:w-9 h-40 sm:h-52 rounded-full bg-black/85 border-2 border-white/30 p-1 flex flex-col justify-end overflow-hidden shadow-[inset_0_0_12px_rgba(0,0,0,0.95)]">
+                    <!-- Tick marks -->
+                    <div class="absolute inset-0 flex flex-col justify-between py-2.5 px-1.5 pointer-events-none z-10 opacity-50">
+                        <div class="w-full h-[1.5px] bg-white"></div>
+                        <div class="w-full h-[1.5px] bg-white"></div>
+                        <div class="w-full h-[1.5px] bg-white"></div>
+                        <div class="w-full h-[1.5px] bg-white"></div>
+                        <div class="w-full h-[1.5px] bg-white"></div>
+                    </div>
+                    <!-- Dynamic Fuel Fill -->
+                    <div id="fuelFill" class="w-full rounded-full" style="height: 100%; background-color: #10b981; box-shadow: 0 0 18px #10b981;"></div>
+                </div>
+                <!-- Flame Icon below Fuel Bar -->
+                <div id="fuelIconBox" class="mt-2 w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-black/60 border-2 flex items-center justify-center text-emerald-400 border-emerald-400/60 shadow-[0_0_12px_rgba(16,185,129,0.4)] transition-colors duration-300">
+                    <i class="fa-solid fa-fire-flame-curved text-base sm:text-lg"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM HUD ROW: Left Throttle Lever | Center Flight Yoke Graphic | Right Blackbox Status -->
+        <div class="flex items-end justify-between w-full pt-1">
+
+            <!-- Bottom Left: Throttle Lever (Matches reference image) -->
+            <div class="pointer-events-auto flex items-center gap-2 hud-panel px-2.5 py-2 rounded-2xl">
+                <div class="relative w-7 h-16 sm:w-8 sm:h-20 bg-black/70 rounded-lg border border-white/15 flex justify-center items-center">
+                    <!-- Dual vertical tracks -->
+                    <div class="w-1 h-12 sm:h-16 bg-slate-600 rounded-full mx-0.5"></div>
+                    <div class="w-1 h-12 sm:h-16 bg-slate-600 rounded-full mx-0.5"></div>
+                    <!-- Throttle Handle -->
+                    <div id="throttleHandle" class="absolute w-7 sm:w-8 h-3.5 bg-gradient-to-b from-slate-200 to-slate-400 rounded border border-red-500 shadow-md transition-all duration-300" style="bottom: 65%;">
+                        <div class="w-full h-0.5 bg-red-600 mt-1"></div>
+                    </div>
+                </div>
+                <div class="hidden sm:flex flex-col text-[10px] font-hud text-slate-300">
+                    <span class="text-amber-400 font-bold">THR</span>
+                    <span id="throttlePct">85%</span>
+                </div>
+            </div>
+
+            <!-- Bottom Center: Interactive Flight Yoke (Steers dynamically with plane tilt) -->
+            <div class="relative flex flex-col items-center pointer-events-none -mb-2 sm:-mb-3">
+                <svg id="flightYoke" viewBox="0 0 260 120" class="w-40 sm:w-56 md:w-64 h-auto drop-shadow-[0_10px_18px_rgba(0,0,0,0.9)] transition-transform duration-150 ease-out">
+                    <!-- Steering Column Shaft -->
+                    <rect x="116" y="75" width="28" height="45" rx="6" fill="#1e242b" stroke="#475569" stroke-width="2"/>
+                    <!-- Yoke Main U-Shape Body -->
+                    <path d="M 35 20 C 30 20, 26 26, 28 38 L 36 82 C 39 96, 50 102, 68 102 L 192 102 C 210 102, 221 96, 224 82 L 232 38 C 234 26, 230 20, 225 20 L 204 20 C 199 20, 197 25, 196 34 L 191 68 C 190 74, 185 77, 176 77 L 156 77 L 146 58 L 114 58 L 104 77 L 84 77 C 75 77, 70 74, 69 68 L 64 34 C 63 25, 61 20, 56 20 Z" fill="url(#yokeGrad)" stroke="#64748b" stroke-width="2.5"/>
+                    <!-- Center Digital Trim Display on Yoke -->
+                    <rect x="114" y="66" width="32" height="18" rx="3" fill="#090d16" stroke="#334155" stroke-width="1.5"/>
+                    <rect x="119" y="71" width="22" height="4" rx="1" fill="#f59e0b"/>
+                    <rect id="yokeStatusLed" x="119" y="78" width="22" height="3" rx="1" fill="#10b981"/>
+                    <!-- Left & Right Grip Buttons -->
+                    <circle cx="45" cy="34" r="4" fill="#ef4444"/>
+                    <circle cx="215" cy="34" r="4" fill="#10b981"/>
+                    <defs>
+                        <linearGradient id="yokeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="#475569"/>
+                            <stop offset="50%" stop-color="#272e38"/>
+                            <stop offset="100%" stop-color="#11161d"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+
+            <!-- Bottom Right: Blackbox Recorder Status -->
+            <div class="hud-panel px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                <div class="text-[10px] sm:text-xs font-hud">
+                    <div class="text-slate-300 leading-tight">HỘP ĐEN</div>
+                    <div class="text-amber-400 font-bold leading-tight">REC • LIVE</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- START / BRIEFING MODAL -->
+    <div id="startModal" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+        <div class="hud-panel max-w-lg w-full rounded-3xl p-6 sm:p-8 border-2 border-orange-500/50 text-center shadow-[0_0_50px_rgba(239,68,68,0.3)]">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-amber-400 text-xs font-hud uppercase tracking-widest mb-3">
+                <i class="fa-solid fa-triangle-exclamation"></i> TÍN HIỆU KHẨN CẤP MAYDAY
+            </div>
+            <h1 class="font-hud text-2xl sm:text-3xl font-black text-white tracking-wide uppercase mb-2">
+                CHUYẾN BAY GIẢI CỨU:<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-red-500">HỘP ĐEN</span>
+            </h1>
+            <p class="text-xs sm:text-sm text-slate-300 leading-relaxed mb-5">
+                Chào Cơ trưởng! Máy bay đang đi vào tâm bão nhiễu động cực mạnh. Hãy giải mã chính xác <strong class="text-amber-400">20 chướng ngại vật kiến thức</strong> (Chủ nghĩa xã hội khoa học - Chương Tôn giáo) để đưa chuyến bay hạ cánh an toàn xuống đường băng.
+            </p>
+
+            <!-- Flight Rules Summary -->
+            <div class="grid grid-cols-3 gap-2 text-left bg-black/45 p-3.5 rounded-2xl border border-white/10 mb-6 text-xs">
+                <div class="flex flex-col items-center text-center p-1">
+                    <i class="fa-solid fa-gas-pump text-emerald-400 text-lg mb-1"></i>
+                    <span class="font-bold text-white">1000 Nhiên liệu</span>
+                    <span class="text-[11px] text-slate-400">Sai trừ 100 điểm</span>
+                </div>
+                <div class="flex flex-col items-center text-center p-1 border-x border-white/10">
+                    <i class="fa-solid fa-cloud-bolt text-amber-400 text-lg mb-1"></i>
+                    <span class="font-bold text-white">20 Chặng Bão</span>
+                    <span class="text-[11px] text-slate-400">Đúng giữ độ cao</span>
+                </div>
+                <div class="flex flex-col items-center text-center p-1">
+                    <i class="fa-solid fa-plane-arrival text-sky-400 text-lg mb-1"></i>
+                    <span class="font-bold text-white">Hạ Cánh</span>
+                    <span class="text-[11px] text-slate-400">Nhiên liệu &gt; 0</span>
+                </div>
+            </div>
+
+            <button id="btnStartGame" class="w-full py-3.5 px-6 rounded-2xl font-hud font-bold text-sm sm:text-base uppercase tracking-wider text-white bg-gradient-to-r from-orange-600 via-red-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 shadow-[0_0_25px_rgba(239,68,68,0.6)] active:scale-95 transition cursor-pointer">
+                <i class="fa-solid fa-plane-departure mr-2"></i> CẤT CÁNH & KÍCH HOẠT RADAR
+            </button>
+        </div>
+    </div>
+
+    <!-- PAUSE / MENU MODAL -->
+    <div id="pauseModal" class="hidden fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+        <div class="hud-panel max-w-md w-full rounded-3xl p-6 border border-amber-500/40 text-center">
+            <h2 class="font-hud text-xl font-bold text-amber-400 uppercase mb-2">TẠM DỪNG CHUYẾN BAY</h2>
+            <p class="text-xs sm:text-sm text-slate-300 mb-5">
+                Hệ thống lái tự động đang giữ thăng bằng tạm thời trong vùng nhiễu động.
+            </p>
+            <div class="flex flex-col gap-3">
+                <button id="btnResume" class="w-full py-3 rounded-xl font-hud font-bold text-sm bg-emerald-600 hover:bg-emerald-500 text-white transition">
+                    <i class="fa-solid fa-play mr-2"></i> TIẾP TỤC BAY
+                </button>
+                <button id="btnRestartModal" class="w-full py-3 rounded-xl font-hud font-bold text-sm bg-slate-700 hover:bg-slate-600 text-white transition">
+                    <i class="fa-solid fa-rotate-right mr-2"></i> KHỞI ĐỘNG LẠI TỪ ĐẦU
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- END GAME MODAL (VICTORY OR GAME OVER) -->
+    <div id="endModal" class="hidden fixed inset-0 z-30 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+        <div id="endModalCard" class="hud-panel max-w-lg w-full rounded-3xl p-6 sm:p-8 border-2 text-center">
+            <div id="endIconContainer" class="w-16 h-16 mx-auto rounded-full flex items-center justify-center text-3xl mb-3">
+                <!-- Icon injected dynamically -->
+            </div>
+            <h2 id="endTitle" class="font-hud text-2xl sm:text-3xl font-black uppercase mb-2">
+                HẠ CÁNH AN TOÀN!
+            </h2>
+            <p id="endSubtitle" class="text-xs sm:text-sm text-slate-300 mb-5">
+                Chúc mừng Cơ trưởng đã điều khiển máy bay vượt qua vùng bão tố thành công!
+            </p>
+
+            <!-- Blackbox Flight Report -->
+            <div class="bg-black/55 rounded-2xl p-4 border border-white/10 mb-6 grid grid-cols-3 gap-2">
+                <div>
+                    <div class="text-[11px] text-slate-400 uppercase">Nhiên liệu còn</div>
+                    <div id="statFuel" class="font-hud text-lg sm:text-xl font-bold text-emerald-400">1000</div>
+                </div>
+                <div class="border-x border-white/10">
+                    <div class="text-[11px] text-slate-400 uppercase">Trả lời đúng</div>
+                    <div id="statCorrect" class="font-hud text-lg sm:text-xl font-bold text-amber-400">20/20</div>
+                </div>
+                <div>
+                    <div class="text-[11px] text-slate-400 uppercase">Xếp hạng</div>
+                    <div id="statRank" class="font-hud text-sm sm:text-base font-bold text-sky-400 pt-1">CƠ TRƯỞNG</div>
+                </div>
+            </div>
+
+            <button id="btnPlayAgain" class="w-full py-3.5 px-6 rounded-2xl font-hud font-bold text-sm sm:text-base uppercase tracking-wider text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-lg active:scale-95 transition cursor-pointer">
+                <i class="fa-solid fa-rotate-right mr-2"></i> THỰC HIỆN CHUYẾN BAY MỚI
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * =========================================================================
+         * 1. NGÂN HÀNG 20 CÂU HỎI MÔN CHỦ NGHĨA XÃ HỘI KHOA HỌC (CHƯƠNG TÔN GIÁO)
+         *    Bám sát giáo trình Chủ nghĩa xã hội khoa học:
+         *    - Khái niệm, bản chất, nguồn gốc và tính chất của tôn giáo
+         *    - Nguyên tắc giải quyết vấn đề tôn giáo trong thời kỳ quá độ lên CNXH
+         *    - Đặc điểm tôn giáo và tín đồ ở Việt Nam
+         *    - Chính sách của Đảng và Nhà nước Việt Nam đối với tín ngưỡng, tôn giáo hiện nay
+         * =========================================================================
+         */
+        const QUESTIONS_BANK = [
+            {
+                obstacle: "MÂY DÔNG TÍCH ĐIỆN",
+                visualType: "STORM_CLOUD",
+                icon: "fa-bolt",
+                question: "Theo quan điểm của chủ nghĩa Mác - Lênin, về mặt bản chất, tôn giáo là gì?",
+                options: [
+                    "Là một hiện tượng xã hội - văn hóa do con người sáng tạo ra trong lịch sử",
+                    "Là một thực thể siêu nhiên có trước loài người và quyết định sự vận động tự nhiên",
+                    "Là hệ thống quy phạm pháp luật bắt buộc mọi công dân trong xã hội phải tuân theo",
+                    "Là học thuyết khoa học phản ánh chính xác các quy luật khách quan của thế giới"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "QUÁI VẬT BÃO LỬA KHỔNG LỒ",
+                visualType: "ALIEN_MONSTER",
+                icon: "fa-dragon",
+                question: "Ph. Ăngghen đã định nghĩa bản chất của mọi tôn giáo như thế nào?",
+                options: [
+                    "Là sự phản ánh hư ảo vào đầu óc con người của những lực lượng bên ngoài chi phối cuộc sống",
+                    "Là sản phẩm thuần túy của tư duy trừu tượng và những thành tựu khoa học kỹ thuật hiện đại",
+                    "Là công cụ duy nhất để giải phóng giai cấp công nhân khỏi mọi áp bức bóc lột xã hội",
+                    "Là sự phản ánh trung thực, khách quan và đầy đủ bản chất của thế giới vật chất tự nhiên"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "ĐÀN CHIM BÃO TẦNG CAO",
+                visualType: "BIRD_FLOCK",
+                icon: "fa-crow",
+                question: "Theo giáo trình Chủ nghĩa xã hội khoa học, tôn giáo có mấy nguồn gốc cơ bản hình thành và tồn tại?",
+                options: [
+                    "Có 2 nguồn gốc cơ bản: nguồn gốc kinh tế và nguồn gốc chính trị - giai cấp",
+                    "Có 3 nguồn gốc cơ bản: tự nhiên, kinh tế - xã hội; nhận thức; và tâm lý",
+                    "Có 4 nguồn gốc cơ bản: tự nhiên, giai cấp, văn hóa truyền thống và địa lý",
+                    "Có 5 nguồn gốc cơ bản: kinh tế, chính trị, đạo đức, thẩm mỹ và pháp luật"
+                ],
+                correct: 1
+            },
+            {
+                obstacle: "ĐĨA BAY NGOÀI HÀNH TINH (UFO)",
+                visualType: "UFO_ALIEN",
+                icon: "fa-shuttle-space",
+                question: "Nguồn gốc nhận thức của tôn giáo xuất phát từ đâu?",
+                options: [
+                    "Sự tuyệt đối hóa mặt chủ thể của nhận thức, biến cái khách quan thành siêu nhiên, thần thánh",
+                    "Sự phát triển đỉnh cao của các ngành khoa học tự nhiên và công nghệ thông tin hiện đại",
+                    "Nhu cầu phân chia giai cấp và tổ chức bộ máy nhà nước pháp quyền trong xã hội cổ đại",
+                    "Sự thống nhất hoàn toàn giữa nhận thức cảm tính và nhận thức lý tính của con người"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "SẤM SÉT ĐÁNH NGANG TẦM BAY",
+                visualType: "STORM_CLOUD",
+                icon: "fa-cloud-bolt",
+                question: "Yếu tố nào thuộc về nguồn gốc tâm lý dẫn đến sự ra đời và tồn tại của tôn giáo?",
+                options: [
+                    "Sự sợ hãi trước tự nhiên, bệnh tật, may rủi cũng như tình cảm biết ơn, kính trọng của con người",
+                    "Trình độ phát triển vượt bậc của lực lượng sản xuất và sự phân công lao động xã hội sâu sắc",
+                    "Sự ra đời và hoạt động mạnh mẽ của các tổ chức chính trị - xã hội và các đảng phái cầm quyền",
+                    "Nhu cầu giao lưu thương mại, trao đổi hàng hóa và mở rộng thị trường kinh tế quốc tế"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "SINH VẬT NGOÀI HÀNH TINH",
+                visualType: "ALIEN_MONSTER",
+                icon: "fa-meteor",
+                question: "Theo chủ nghĩa Mác - Lênin, tôn giáo có những tính chất cơ bản nào?",
+                options: [
+                    "Tính lịch sử, tính quần chúng và tính chính trị",
+                    "Tính vĩnh cửu, tính giai cấp và tính khoa học",
+                    "Tính cá nhân, tính pháp lý và tính bắt buộc",
+                    "Tính kinh tế, tính dân tộc và tính tuyệt đối"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "ĐÀN CHIM DI CƯ TRONG BÃO",
+                visualType: "BIRD_FLOCK",
+                icon: "fa-feather-pointed",
+                question: "Vì sao nói tôn giáo mang tính chính trị?",
+                options: [
+                    "Vì tôn giáo ra đời đồng thời với sự xuất hiện của loài người thời kỳ công xã nguyên thủy",
+                    "Vì khi xã hội phân chia giai cấp, giai cấp thống trị thường lợi dụng tôn giáo để phục vụ lợi ích",
+                    "Vì mọi tổ chức tôn giáo trên thế giới đều trực tiếp nắm giữ toàn bộ quyền lực nhà nước",
+                    "Vì các hình thái tôn giáo chỉ tồn tại duy nhất trong các chế độ chính trị phong kiến cổ xưa"
+                ],
+                correct: 1
+            },
+            {
+                obstacle: "TÀU VŨ TRỤ LẠ GÂY NHIỄU",
+                visualType: "UFO_ALIEN",
+                icon: "fa-satellite",
+                question: "Tính lịch sử của tôn giáo được thể hiện ở nội dung nào sau đây?",
+                options: [
+                    "Tôn giáo hình thành, tồn tại, phát triển trong những giai đoạn lịch sử nhất định và có sự biến đổi",
+                    "Tôn giáo tồn tại vĩnh viễn cùng với vũ trụ và không bao giờ thay đổi qua các thời đại lịch sử",
+                    "Tôn giáo chỉ xuất hiện trong một giai đoạn lịch sử ngắn ngủi rồi tự động biến mất ngay lập tức",
+                    "Tôn giáo hoàn toàn không chịu bất kỳ sự tác động nào của các điều kiện kinh tế - xã hội"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "MÂY TÍCH VŨ SẤM CHỚP",
+                visualType: "STORM_CLOUD",
+                icon: "fa-smog",
+                question: "Trong thời kỳ quá độ lên chủ nghĩa xã hội, việc giải quyết vấn đề tôn giáo phải tuân theo nguyên tắc đầu tiên nào?",
+                options: [
+                    "Tôn trọng, bảo đảm quyền tự do tín ngưỡng và không tín ngưỡng của nhân dân",
+                    "Xóa bỏ ngay lập tức mọi cơ sở thờ tự tôn giáo bằng các biện pháp hành chính",
+                    "Bắt buộc mọi công dân phải gia nhập một tổ chức tôn giáo thống nhất của quốc gia",
+                    "Cấm tuyệt đối mọi hoạt động lễ hội và sinh hoạt tôn giáo trong cộng đồng dân cư"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "QUÁI VẬT NÚI LỬA KHỔNG LỒ",
+                visualType: "ALIEN_MONSTER",
+                icon: "fa-fire",
+                question: "Theo nguyên tắc giải quyết vấn đề tôn giáo trong thời kỳ quá độ lên CNXH, muốn khắc phục dần những ảnh hưởng tiêu cực của tôn giáo phải gắn liền với quá trình nào?",
+                options: [
+                    "Gắn liền với quá trình cải tạo xã hội cũ, xây dựng xã hội mới",
+                    "Gắn liền với việc ban hành các sắc lệnh hành chính cấm đoán đạo",
+                    "Gắn liền với việc cô lập các cộng đồng có đạo khỏi đời sống xã hội",
+                    "Gắn liền với việc thay thế toàn bộ các giá trị văn hóa truyền thống"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "ĐÀN CHIM SĂN MỒI TRÊN KHÔNG",
+                visualType: "BIRD_FLOCK",
+                icon: "fa-crow",
+                question: "Trong giải quyết vấn đề tôn giáo thời kỳ quá độ lên CNXH, vì sao phải phân biệt hai mặt chính trị và tư tưởng của tôn giáo?",
+                options: [
+                    "Để tránh khuynh hướng cực đoan trong quản lý, vừa bảo đảm tự do tín ngưỡng vừa chống lợi dụng tôn giáo",
+                    "Để tách biệt hoàn toàn người có đạo với các quyền lợi kinh tế và nghĩa vụ công dân trong xã hội",
+                    "Để chứng minh tôn giáo không có bất kỳ mối liên hệ nào với đời sống tinh thần của quần chúng nhân dân",
+                    "Để hợp pháp hóa mọi hoạt động tuyên truyền trái pháp luật của các thế lực nhân danh tôn giáo"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "ĐĨA BAY PHÁT TÍN HIỆU ĐỎ",
+                visualType: "UFO_ALIEN",
+                icon: "fa-wave-square",
+                question: "Nguyên tắc thứ tư trong giải quyết vấn đề tôn giáo thời kỳ quá độ lên chủ nghĩa xã hội đòi hỏi phải có quan điểm gì?",
+                options: [
+                    "Quan điểm lịch sử cụ thể trong giải quyết vấn đề tín ngưỡng, tôn giáo",
+                    "Quan điểm đồng nhất mọi tôn giáo trên thế giới thành một mô hình chung",
+                    "Quan điểm bất biến, áp dụng một chính sách cứng nhắc cho mọi thời kỳ",
+                    "Quan điểm phủ nhận hoàn toàn vai trò văn hóa - đạo đức của tôn giáo"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "BÃO DÔNG ĐIỆN TỪ CẤP 5",
+                visualType: "STORM_CLOUD",
+                icon: "fa-cloud-bolt",
+                question: "Đặc điểm nổi bật đầu tiên của tôn giáo ở Việt Nam hiện nay là gì?",
+                options: [
+                    "Việt Nam là một quốc gia có nhiều tôn giáo cùng tồn tại và hoạt động",
+                    "Việt Nam chỉ có duy nhất một tôn giáo truyền thống từ thời cổ đại đến nay",
+                    "Các tôn giáo ở Việt Nam hoàn toàn khép kín, không có giao lưu với thế giới",
+                    "Việt Nam là quốc gia có tỷ lệ dân số theo tôn giáo chiếm trọn 100% dân số"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "NGƯỜI NGOÀI HÀNH TINH KHỔNG LỒ",
+                visualType: "ALIEN_MONSTER",
+                icon: "fa-robot",
+                question: "Về mối quan hệ giữa các tôn giáo ở Việt Nam, đặc điểm nào phản ánh đúng thực tiễn lịch sử và hiện nay?",
+                options: [
+                    "Đa dạng, đan xen, chung sống hòa bình và không có xung đột, chiến tranh tôn giáo",
+                    "Thường xuyên xảy ra các cuộc xung đột vũ trang và chiến tranh tôn giáo kéo dài",
+                    "Mỗi vùng lãnh thổ hành chính chỉ cho phép một tôn giáo duy nhất được tồn tại",
+                    "Hoàn toàn tách biệt với nhau, không có bất kỳ sự giao thoa văn hóa - tín ngưỡng"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "ĐÀN CHIM BÃO CHẮN ĐƯỜNG BAY",
+                visualType: "BIRD_FLOCK",
+                icon: "fa-wind",
+                question: "Thành phần tín đồ các tôn giáo ở Việt Nam hiện nay chủ yếu là ai?",
+                options: [
+                    "Phần lớn là nhân dân lao động, có lòng yêu nước, tinh thần dân tộc sâu sắc",
+                    "Chủ yếu là tầng lớp quý tộc phong kiến và tư sản lớn tập trung ở thành thị",
+                    "Chỉ tập trung ở bộ phận cư dân người nước ngoài đang sinh sống tại Việt Nam",
+                    "Chủ yếu là những người tách rời hoàn toàn khỏi lao động sản xuất và xã hội"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "VẬT THỂ BAY KHÔNG XÁC ĐỊNH",
+                visualType: "UFO_ALIEN",
+                icon: "fa-shuttle-space",
+                question: "Hàng ngũ chức sắc các tôn giáo ở Việt Nam có vai trò và vị trí như thế nào?",
+                options: [
+                    "Có vai trò, vị trí quan trọng trong giáo hội, có uy tín, ảnh hưởng với tín đồ",
+                    "Không có bất kỳ tiếng nói hay ảnh hưởng nào đến đời sống tinh thần của tín đồ",
+                    "Chỉ hoạt động thuần túy trong lĩnh vực kinh doanh thương mại và dịch vụ",
+                    "Hoàn toàn đứng ngoài các phong trào thi đua yêu nước ở cộng đồng địa phương"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "MÂY DÔNG SÉT ĐÁNH LIÊN HỒI",
+                visualType: "STORM_CLOUD",
+                icon: "fa-bolt",
+                question: "Các tôn giáo ở Việt Nam có mối quan hệ như thế nào với các tổ chức, cá nhân tôn giáo ở nước ngoài?",
+                options: [
+                    "Đều có quan hệ với các tổ chức, cá nhân tôn giáo ở nước ngoài theo quy định pháp luật",
+                    "Tất cả các tôn giáo ở Việt Nam đều bị cắt đứt hoàn toàn mọi quan hệ giao lưu quốc tế",
+                    "Chỉ duy nhất các tôn giáo nội sinh mới được phép có quan hệ với tổ chức nước ngoài",
+                    "Tất cả đều chịu sự điều hành trực tiếp về mặt chính trị từ các tổ chức nước ngoài"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "THỰC THỂ BÃO TỐ TẦNG CAO",
+                visualType: "ALIEN_MONSTER",
+                icon: "fa-dragon",
+                question: "Theo quan điểm, chính sách của Đảng và Nhà nước Việt Nam hiện nay, tín ngưỡng, tôn giáo được nhìn nhận như thế nào?",
+                options: [
+                    "Là nhu cầu tinh thần của một bộ phận nhân dân, đang và sẽ tồn tại cùng dân tộc trong quá trình xây dựng CNXH",
+                    "Là tàn dư lạc hậu của xã hội cũ cần phải xóa bỏ ngay lập tức trong giai đoạn đầu của thời kỳ quá độ lên CNXH",
+                    "Là lực lượng đối lập hoàn toàn về lợi ích với mục tiêu dân giàu, nước mạnh, dân chủ, công bằng, văn minh",
+                    "Là hoạt động tinh thần chỉ được phép tồn tại hạn chế ở một số khu vực nông thôn và miền núi vùng sâu"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "ĐÀN CHIM LỬA VÙNG NHIỄU ĐỘNG",
+                visualType: "BIRD_FLOCK",
+                icon: "fa-crow",
+                question: "Chính sách nhất quán của Đảng và Nhà nước Việt Nam đối với đồng bào theo tôn giáo và không theo tôn giáo là gì?",
+                options: [
+                    "Thực hiện nhất quán chính sách đại đoàn kết dân tộc, đoàn kết đồng bào có đạo và không có đạo",
+                    "Ưu tiên quyền lợi chính trị và kinh tế cho người không theo tôn giáo hơn người theo tôn giáo",
+                    "Tách riêng đồng bào theo các tôn giáo thành những khu vực hành chính tự trị biệt lập hoàn toàn",
+                    "Chỉ vận động đồng bào có đạo tham gia các hoạt động từ thiện nhân đạo ở quy mô địa phương"
+                ],
+                correct: 0
+            },
+            {
+                obstacle: "CỔNG BÃO CUỐI CÙNG TRƯỚC ĐƯỜNG BĂNG",
+                visualType: "UFO_ALIEN",
+                icon: "fa-plane-arrival",
+                question: "Theo chính sách của Đảng và Nhà nước Việt Nam hiện nay, nội dung cốt lõi của công tác tôn giáo là gì?",
+                options: [
+                    "Công tác vận động quần chúng",
+                    "Công tác quản lý cơ sở thờ tự",
+                    "Công tác quy hoạch kiến trúc chùa",
+                    "Công tác hạn chế số lượng tín đồ"
+                ],
+                correct: 0
+            }
+        ];
+
+        /**
+         * =========================================================================
+         * 2. HỆ THỐNG ÂM THANH TỔNG HỢP (WEB AUDIO API - KHÔNG CẦN FILE NGOÀI)
+         * =========================================================================
+         */
+        class FlightAudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.isMuted = false;
+                this.engineOsc = null;
+                this.engineGain = null;
+                this.noiseNode = null;
+                this.noiseGain = null;
+                this.isRunning = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            startEngineAmbience() {
+                this.init();
+                if (this.isRunning) return;
+                this.isRunning = true;
+
+                // Deep propeller engine hum (Sawtooth + Lowpass filter)
+                this.engineOsc = this.ctx.createOscillator();
+                this.engineOsc.type = 'sawtooth';
+                this.engineOsc.frequency.setValueAtTime(52, this.ctx.currentTime);
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(140, this.ctx.currentTime);
+
+                this.engineGain = this.ctx.createGain();
+                this.engineGain.gain.setValueAtTime(this.isMuted ? 0 : 0.08, this.ctx.currentTime);
+
+                this.engineOsc.connect(filter);
+                filter.connect(this.engineGain);
+                this.engineGain.connect(this.ctx.destination);
+                this.engineOsc.start();
+
+                // Storm wind white/pink noise
+                const bufferSize = 2 * this.ctx.sampleRate;
+                const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                let b0 = 0, b1 = 0, b2 = 0;
+                for (let i = 0; i < bufferSize; i++) {
+                    const white = Math.random() * 2 - 1;
+                    b0 = 0.99765 * b0 + white * 0.0990460;
+                    b1 = 0.96300 * b1 + white * 0.2965164;
+                    b2 = 0.57000 * b2 + white * 1.0526913;
+                    output[i] = (b0 + b1 + b2 + white * 0.1848) * 0.15;
+                }
+
+                this.noiseNode = this.ctx.createBufferSource();
+                this.noiseNode.buffer = noiseBuffer;
+                this.noiseNode.loop = true;
+
+                const windFilter = this.ctx.createBiquadFilter();
+                windFilter.type = 'bandpass';
+                windFilter.frequency.setValueAtTime(320, this.ctx.currentTime);
+                windFilter.Q.setValueAtTime(1.2, this.ctx.currentTime);
+
+                this.noiseGain = this.ctx.createGain();
+                this.noiseGain.gain.setValueAtTime(this.isMuted ? 0 : 0.05, this.ctx.currentTime);
+
+                this.noiseNode.connect(windFilter);
+                windFilter.connect(this.noiseGain);
+                this.noiseGain.connect(this.ctx.destination);
+                this.noiseNode.start();
+            }
+
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                if (this.ctx && this.engineGain && this.noiseGain) {
+                    const now = this.ctx.currentTime;
+                    this.engineGain.gain.setTargetAtTime(this.isMuted ? 0 : 0.08, now, 0.05);
+                    this.noiseGain.gain.setTargetAtTime(this.isMuted ? 0 : 0.05, now, 0.05);
+                }
+                return this.isMuted;
+            }
+
+            playClick() {
+                if (this.isMuted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(650, now);
+                osc.frequency.exponentialRampToValueAtTime(180, now + 0.045);
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            }
+
+            playCorrect() {
+                if (this.isMuted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+
+                // Positive Cockpit Chime (C5 -> E5 -> G5 -> C6)
+                const freqs = [523.25, 659.25, 783.99, 1046.50];
+                freqs.forEach((f, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(f, now + idx * 0.07);
+                    gain.gain.setValueAtTime(0.001, now + idx * 0.07);
+                    gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.07 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.35);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.07);
+                    osc.stop(now + idx * 0.07 + 0.36);
+                });
+
+                // Brief engine throttle surge
+                if (this.engineOsc) {
+                    this.engineOsc.frequency.setValueAtTime(52, now);
+                    this.engineOsc.frequency.linearRampToValueAtTime(76, now + 0.3);
+                    this.engineOsc.frequency.linearRampToValueAtTime(54, now + 1.0);
+                }
+            }
+
+            playWrongAlarm() {
+                if (this.isMuted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+
+                // Urgent Cockpit Warning Beep-Beep-Beep + Thunder Rumble
+                for (let i = 0; i < 3; i++) {
+                    const start = now + i * 0.16;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(880, start);
+                    osc.frequency.linearRampToValueAtTime(620, start + 0.12);
+
+                    gain.gain.setValueAtTime(0.16, start);
+                    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.13);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(start);
+                    osc.stop(start + 0.14);
+                }
+
+                // Low thunder boom
+                const subOsc = this.ctx.createOscillator();
+                const subGain = this.ctx.createGain();
+                subOsc.type = 'sawtooth';
+                subOsc.frequency.setValueAtTime(95, now);
+                subOsc.frequency.exponentialRampToValueAtTime(28, now + 0.65);
+                subGain.gain.setValueAtTime(0.28, now);
+                subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
+                subOsc.connect(subGain);
+                subGain.connect(this.ctx.destination);
+                subOsc.start(now);
+                subOsc.stop(now + 0.7);
+            }
+
+            playVictory() {
+                if (this.isMuted) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50];
+                notes.forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + i * 0.12);
+                    gain.gain.setValueAtTime(0.2, now + i * 0.12);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.45);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + i * 0.12);
+                    osc.stop(now + i * 0.12 + 0.46);
+                });
+            }
+        }
+
+        const audio = new FlightAudioEngine();
+
+        /**
+         * =========================================================================
+         * 3. TRẠNG THÁI TRÒ CHƠI (GAME STATE)
+         * =========================================================================
+         */
+        const state = {
+            status: 'START', // START, PLAYING, PAUSED, VICTORY, GAMEOVER
+            phase: 'FLYING', // FLYING (scrolling toward obstacle), ENCOUNTER (stopped at obstacle, question visible), EVADING (jumping over obstacle), IMPACT (colliding through obstacle)
+            currentQIndex: 0,
+            fuel: 1000,
+            maxFuel: 1000,
+            altitude: 2000,
+            distance: 5000,
+            speed: 215,
+            correctCount: 0,
+            currentCorrectIdx: 0,
+            isAnsweringLocked: false,
+
+            // Dino-runner horizontal scrolling & obstacle coordinates
+            scrollSpeed: 7.5,
+            terrainScrollOffset: 0,
+            obstacleX: 0,
+            obstacleY: 0,
+            obstaclePassed: false,
+
+            // Plane Jump / Evasion & Impact Physics
+            planeJumpOffsetY: 0,
+            planeJumpVelocity: 0,
+            planeHitRecoilX: 0,
+
+            // Visual animation parameters
+            planeRoll: 0,
+            targetRoll: 0,
+            planePitch: 0,
+            targetPitch: 0,
+            propellerAngle: 0,
+            lightningAlpha: 0,
+            lightningBolt: null,
+            radarAngle: 0,
+            embers: [],
+            clouds: []
+        };
+
+        // DOM References
+        const gameCanvas = document.getElementById('gameCanvas');
+        const ctx = gameCanvas.getContext('2d');
+        const radarCanvas = document.getElementById('radarCanvas');
+        const radarCtx = radarCanvas.getContext('2d');
+        const airspeedCanvas = document.getElementById('airspeedCanvas');
+        const speedCtx = airspeedCanvas.getContext('2d');
+
+        /**
+         * =========================================================================
+         * 4. KHỞI TẠO & ĐIỀU CHỈNH KÍCH THƯỚC CANVAS RESPONSIVE
+         * =========================================================================
+         */
+        function resizeCanvases() {
+            gameCanvas.width = window.innerWidth;
+            gameCanvas.height = window.innerHeight;
+
+            // High DPI crispness for small gauges
+            const rRect = radarCanvas.getBoundingClientRect();
+            radarCanvas.width = Math.max(100, rRect.width * 2);
+            radarCanvas.height = Math.max(100, rRect.height * 2);
+
+            const sRect = airspeedCanvas.getBoundingClientRect();
+            airspeedCanvas.width = Math.max(80, sRect.width * 2);
+            airspeedCanvas.height = Math.max(80, sRect.height * 2);
+        }
+
+        window.addEventListener('resize', resizeCanvases);
+
+        function initAtmosphereParticles() {
+            state.embers = [];
+            for (let i = 0; i < 65; i++) {
+                state.embers.push({
+                    x: Math.random() * window.innerWidth,
+                    y: Math.random() * window.innerHeight,
+                    size: Math.random() * 2.5 + 0.8,
+                    speedX: -(Math.random() * 4 + 2),
+                    speedY: (Math.random() - 0.3) * 2.5,
+                    alpha: Math.random() * 0.8 + 0.2
+                });
+            }
+
+            state.clouds = [];
+            for (let i = 0; i < 10; i++) {
+                state.clouds.push({
+                    x: Math.random() * window.innerWidth,
+                    y: Math.random() * (window.innerHeight * 0.65),
+                    radius: Math.random() * 140 + 90,
+                    speed: Math.random() * 0.6 + 0.25,
+                    opacity: Math.random() * 0.28 + 0.12
+                });
+            }
+        }
+
+        /**
+         * =========================================================================
+         * 5. VẼ CẢNH BÃO TỐ ĐỎ RỰC, QUÁI VẬT BÃO & MÁY BAY CÁNH QUẠT (2.5D/3D)
+         * =========================================================================
+         */
+        function triggerLightning() {
+            state.lightningAlpha = 0.75;
+            const startX = gameCanvas.width * (0.55 + Math.random() * 0.35);
+            const points = [{ x: startX, y: 0 }];
+            let curX = startX;
+            let curY = 0;
+            while (curY < gameCanvas.height * 0.62) {
+                curX += (Math.random() - 0.5) * 75;
+                curY += Math.random() * 45 + 25;
+                points.push({ x: curX, y: curY });
+            }
+            state.lightningBolt = points;
+        }
+
+        function drawStormEnvironment(time) {
+            const w = gameCanvas.width;
+            const h = gameCanvas.height;
+            const horizonY = h * 0.65;
+            const isScrolling = (state.status === 'PLAYING' && state.phase !== 'ENCOUNTER');
+
+            if (isScrolling) {
+                state.terrainScrollOffset += state.scrollSpeed;
+            }
+
+            // 1. Apocalyptic Red-Crimson Storm Sky Gradient (Matches reference image)
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
+            if (state.status === 'VICTORY') {
+                skyGrad.addColorStop(0, '#0f172a');
+                skyGrad.addColorStop(0.5, '#9a3412');
+                skyGrad.addColorStop(1, '#f59e0b');
+            } else {
+                skyGrad.addColorStop(0, '#140305');
+                skyGrad.addColorStop(0.35, '#590d14');
+                skyGrad.addColorStop(0.75, '#b91c1c');
+                skyGrad.addColorStop(1, '#f97316');
+            }
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, w, horizonY);
+
+            // Glowing Storm Core in Sky
+            const glowX = w * 0.72;
+            const glowY = h * 0.22;
+            const radGlow = ctx.createRadialGradient(glowX, glowY, 10, glowX, glowY, w * 0.45);
+            radGlow.addColorStop(0, 'rgba(255, 220, 180, 0.55)');
+            radGlow.addColorStop(0.35, 'rgba(239, 68, 68, 0.25)');
+            radGlow.addColorStop(1, 'rgba(20, 3, 5, 0)');
+            ctx.fillStyle = radGlow;
+            ctx.fillRect(0, 0, w, horizonY);
+
+            // Random Lightning Flash
+            if (state.status === 'PLAYING' && Math.random() < 0.008) {
+                triggerLightning();
+            }
+            if (state.lightningAlpha > 0.01) {
+                ctx.fillStyle = `rgba(255, 200, 190, ${state.lightningAlpha * 0.35})`;
+                ctx.fillRect(0, 0, w, h);
+
+                if (state.lightningBolt) {
+                    ctx.save();
+                    ctx.strokeStyle = `rgba(255, 240, 230, ${state.lightningAlpha})`;
+                    ctx.lineWidth = 3;
+                    ctx.shadowColor = '#ffedd5';
+                    ctx.shadowBlur = 18;
+                    ctx.beginPath();
+                    state.lightningBolt.forEach((pt, idx) => {
+                        if (idx === 0) ctx.moveTo(pt.x, pt.y);
+                        else ctx.lineTo(pt.x, pt.y);
+                    });
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                state.lightningAlpha *= 0.88;
+            }
+
+            // 2. Distant Parallax Volcanic Peaks & Storm Leviathan Silhouette
+            drawParallaxVolcanicHills(w, horizonY);
+            if (state.status !== 'VICTORY') {
+                drawStormMonsterSilhouette(w * 0.82, horizonY + 6, Math.min(w, h) * 0.28, time);
+            }
+
+            // 3. Drifting Dark Storm Clouds
+            state.clouds.forEach(c => {
+                c.x -= isScrolling ? (c.speed + 2.2) : (c.speed * 0.35);
+                if (c.x + c.radius < 0) c.x = w + c.radius;
+                const cGrad = ctx.createRadialGradient(c.x, c.y, 10, c.x, c.y, c.radius);
+                cGrad.addColorStop(0, `rgba(20, 6, 8, ${c.opacity})`);
+                cGrad.addColorStop(1, 'rgba(20, 6, 8, 0)');
+                ctx.fillStyle = cGrad;
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 4. Scorched Volcanic Terrain Scrolling Right-to-Left (Dino-Runner Ground Style)
+            const groundGrad = ctx.createLinearGradient(0, horizonY, 0, h);
+            groundGrad.addColorStop(0, '#3b090c');
+            groundGrad.addColorStop(0.45, '#220406');
+            groundGrad.addColorStop(1, '#0b0102');
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(0, horizonY, w, h - horizonY);
+
+            // Glowing horizon lava rim
+            ctx.strokeStyle = 'rgba(251, 146, 60, 0.55)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, horizonY);
+            ctx.lineTo(w, horizonY);
+            ctx.stroke();
+
+            // Scrolling Ground Markers & Lava Cracks (moves left continuously while flying)
+            ctx.save();
+            const spacing = 110;
+            const offset = state.terrainScrollOffset % spacing;
+            ctx.strokeStyle = 'rgba(249, 115, 22, 0.28)';
+            ctx.lineWidth = 2;
+            for (let x = -spacing; x < w + spacing; x += spacing) {
+                const gx = x - offset;
+                ctx.beginPath();
+                ctx.moveTo(gx, horizonY);
+                ctx.lineTo(gx - 95, h);
+                ctx.stroke();
+
+                // Lava fissure glow on ground
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+                ctx.fillRect(gx - 35, horizonY + 28, 34, 4);
+            }
+            ctx.restore();
+
+            // 5. Runway Lights appearing as player approaches final questions (Q >= 16 or Victory)
+            if (state.currentQIndex >= 15 || state.status === 'VICTORY') {
+                const progress = state.status === 'VICTORY' ? 1 : (state.currentQIndex - 14) / 6;
+                drawRunwayApproach(w, h, horizonY, progress, time);
+            }
+
+            // 6. Floating Fire Embers / Ash Particles
+            state.embers.forEach(e => {
+                e.x += isScrolling ? (e.speedX - 3.5) : (e.speedX * 0.4);
+                e.y += e.speedY;
+                if (e.x < 0) e.x = w;
+                if (e.y > h) e.y = 0;
+                if (e.y < 0) e.y = h;
+
+                ctx.fillStyle = `rgba(253, 186, 116, ${e.alpha})`;
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function drawParallaxVolcanicHills(w, horizonY) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(32, 6, 9, 0.78)';
+            const hillSpan = 260;
+            const shift = (state.terrainScrollOffset * 0.25) % hillSpan;
+            ctx.beginPath();
+            ctx.moveTo(0, horizonY);
+            for (let x = -hillSpan; x <= w + hillSpan; x += hillSpan) {
+                const hx = x - shift;
+                ctx.lineTo(hx + hillSpan * 0.3, horizonY - 42);
+                ctx.lineTo(hx + hillSpan * 0.55, horizonY - 22);
+                ctx.lineTo(hx + hillSpan * 0.8, horizonY - 58);
+                ctx.lineTo(hx + hillSpan, horizonY);
+            }
+            ctx.lineTo(w, horizonY);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawStormMonsterSilhouette(x, baseY, scale, time) {
+            ctx.save();
+            const sway = Math.sin(time * 0.0015) * 8;
+            ctx.translate(x + sway, baseY);
+
+            ctx.fillStyle = 'rgba(24, 5, 8, 0.82)';
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.28)';
+            ctx.lineWidth = 2;
+
+            // Torso & Towering Horns (inspired by reference image)
+            ctx.beginPath();
+            ctx.moveTo(-scale * 0.32, 0);
+            ctx.lineTo(-scale * 0.22, -scale * 0.85);
+            ctx.lineTo(-scale * 0.55, -scale * 1.15);
+            ctx.lineTo(-scale * 0.16, -scale * 0.98);
+            ctx.lineTo(-scale * 0.24, -scale * 1.42);
+            ctx.lineTo(-scale * 0.04, -scale * 1.06);
+            ctx.lineTo(scale * 0.08, -scale * 1.45);
+            ctx.lineTo(scale * 0.14, -scale * 1.02);
+            ctx.lineTo(scale * 0.52, -scale * 1.18);
+            ctx.lineTo(scale * 0.24, -scale * 0.82);
+            ctx.lineTo(scale * 0.35, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Glowing Fiery Maw / Core
+            const pulse = 0.7 + Math.sin(time * 0.005) * 0.3;
+            ctx.fillStyle = `rgba(251, 146, 60, ${0.65 * pulse})`;
+            ctx.beginPath();
+            ctx.ellipse(0, -scale * 0.78, scale * 0.08, scale * 0.13, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawRunwayApproach(w, h, horizonY, progress, time) {
+            ctx.save();
+            const runwayWidth = 120 + progress * 220;
+            const runwayTopW = 24 + progress * 40;
+            const rx = w * 0.78;
+            const ry = horizonY + (h - horizonY) * (0.25 + progress * 0.45);
+
+            // Asphalt Strip
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+            ctx.beginPath();
+            ctx.moveTo(rx - runwayTopW * 0.5, horizonY);
+            ctx.lineTo(rx + runwayTopW * 0.5, horizonY);
+            ctx.lineTo(rx + runwayWidth * 0.5, ry);
+            ctx.lineTo(rx - runwayWidth * 0.5, ry);
+            ctx.closePath();
+            ctx.fill();
+
+            // Flashing Approach Beacon Lights
+            const blink = Math.floor(time * 0.008) % 2 === 0;
+            ctx.fillStyle = blink ? '#34d399' : '#fbbf24';
+            for (let i = 0; i <= 5; i++) {
+                const t = i / 5;
+                const ly = horizonY + (ry - horizonY) * t;
+                const halfW = (runwayTopW + (runwayWidth - runwayTopW) * t) * 0.5;
+                ctx.beginPath();
+                ctx.arc(rx - halfW, ly, 2.5 + t * 2, 0, Math.PI * 2);
+                ctx.arc(rx + halfW, ly, 2.5 + t * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        /**
+         * =========================================================================
+         * 5B. VẼ VÀ CẬP NHẬT CHƯỚNG NGẠI VẬT CUỘN NGANG (DINO RUNNER MECHANIC)
+         * =========================================================================
+         */
+        function spawnNextObstacle() {
+            const w = gameCanvas.width;
+            const h = gameCanvas.height;
+            state.obstacleX = w + 130;
+            state.obstacleY = h * 0.50;
+            state.obstaclePassed = false;
+            state.phase = 'FLYING';
+            updateFlightPhaseBadge();
+        }
+
+        function updateAndDrawObstacle(time) {
+            if (state.status !== 'PLAYING') return;
+
+            const w = gameCanvas.width;
+            const h = gameCanvas.height;
+            const planeFrontX = w * 0.25 + 95; // Encounter trigger point right in front of the plane
+
+            if (state.phase === 'FLYING') {
+                // Move obstacle from right to left toward the plane
+                state.obstacleX -= state.scrollSpeed;
+
+                // When obstacle reaches plane's encounter zone -> FREEZE & POP UP QUESTION
+                if (state.obstacleX <= planeFrontX + 45) {
+                    state.obstacleX = planeFrontX + 45;
+                    state.phase = 'ENCOUNTER';
+                    updateFlightPhaseBadge();
+                    showQuestionPopup();
+                }
+            } else if (state.phase === 'EVADING' || state.phase === 'IMPACT') {
+                // Obstacle continues scrolling past the plane to the left
+                state.obstacleX -= (state.scrollSpeed * 1.35);
+
+                // Once obstacle exits left side of screen, load next question & spawn next obstacle
+                if (state.obstacleX < -180 && !state.obstaclePassed) {
+                    state.obstaclePassed = true;
+                    state.currentQIndex++;
+                    if (state.currentQIndex >= QUESTIONS_BANK.length) {
+                        finishGame(true);
+                    } else {
+                        spawnNextObstacle();
+                    }
+                }
+            }
+
+            // Draw the current obstacle visual
+            const qData = QUESTIONS_BANK[Math.min(state.currentQIndex, QUESTIONS_BANK.length - 1)];
+            drawObstacleEntity(qData.visualType, state.obstacleX, state.obstacleY, time);
+        }
+
+        function drawObstacleEntity(type, x, y, time) {
+            ctx.save();
+            const bob = Math.sin(time * 0.006) * 8;
+            ctx.translate(x, y + bob);
+
+            if (type === 'STORM_CLOUD') {
+                // Dark Thunderhead Cloud with Jagged Lightning Bolts
+                ctx.fillStyle = '#1f1218';
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 2.5;
+                ctx.shadowColor = '#ef4444';
+                ctx.shadowBlur = 20;
+
+                ctx.beginPath();
+                ctx.arc(-28, 5, 32, 0, Math.PI * 2);
+                ctx.arc(0, -14, 40, 0, Math.PI * 2);
+                ctx.arc(32, 4, 30, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Flashing yellow lightning bolt under cloud
+                if (Math.sin(time * 0.02) > -0.3) {
+                    ctx.fillStyle = '#fde047';
+                    ctx.beginPath();
+                    ctx.moveTo(-4, 14);
+                    ctx.lineTo(-18, 48);
+                    ctx.lineTo(-2, 48);
+                    ctx.lineTo(-12, 82);
+                    ctx.lineTo(16, 40);
+                    ctx.lineTo(0, 40);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            } else if (type === 'UFO_ALIEN') {
+                // Glowing Alien Saucer with Tractor Beam
+                const beamGrad = ctx.createLinearGradient(0, 10, 0, 85);
+                beamGrad.addColorStop(0, 'rgba(52, 211, 153, 0.45)');
+                beamGrad.addColorStop(1, 'rgba(52, 211, 153, 0)');
+                ctx.fillStyle = beamGrad;
+                ctx.beginPath();
+                ctx.moveTo(-18, 10);
+                ctx.lineTo(18, 10);
+                ctx.lineTo(42, 85);
+                ctx.lineTo(-42, 85);
+                ctx.closePath();
+                ctx.fill();
+
+                // Glass Dome
+                ctx.fillStyle = 'rgba(56, 189, 248, 0.75)';
+                ctx.beginPath();
+                ctx.arc(0, -10, 24, Math.PI, 0);
+                ctx.fill();
+
+                // Metallic Saucer Disc
+                ctx.fillStyle = '#334155';
+                ctx.strokeStyle = '#34d399';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 54, 16, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Blinking Rim Lights
+                [-34, -12, 12, 34].forEach((lx, idx) => {
+                    ctx.fillStyle = (Math.floor(time * 0.01) + idx) % 2 === 0 ? '#ef4444' : '#fde047';
+                    ctx.beginPath();
+                    ctx.arc(lx, 2, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            } else if (type === 'BIRD_FLOCK') {
+                // Flock of Giant Storm Birds flying against the aircraft
+                const offsets = [
+                    { dx: -22, dy: -24, s: 1.0 },
+                    { dx: 18, dy: -36, s: 0.85 },
+                    { dx: 12, dy: 8, s: 1.1 },
+                    { dx: -16, dy: 28, s: 0.9 },
+                    { dx: 36, dy: -8, s: 0.8 }
+                ];
+                offsets.forEach((b, i) => {
+                    const flap = Math.sin(time * 0.018 + i) * 14;
+                    ctx.strokeStyle = '#fca5a5';
+                    ctx.fillStyle = '#18181b';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(b.dx - 20 * b.s, b.dy + flap);
+                    ctx.quadraticCurveTo(b.dx - 8 * b.s, b.dy - 10 * b.s, b.dx, b.dy);
+                    ctx.quadraticCurveTo(b.dx + 8 * b.s, b.dy - 10 * b.s, b.dx + 20 * b.s, b.dy + flap);
+                    ctx.stroke();
+                });
+            } else {
+                // ALIEN_MONSTER: Fiery Horned Storm Creature Head
+                ctx.fillStyle = '#1c0a0e';
+                ctx.strokeStyle = '#f97316';
+                ctx.lineWidth = 2.5;
+                ctx.shadowColor = '#ef4444';
+                ctx.shadowBlur = 22;
+
+                ctx.beginPath();
+                ctx.moveTo(-36, 30);
+                ctx.lineTo(-48, -38);
+                ctx.lineTo(-20, -18);
+                ctx.lineTo(0, -48);
+                ctx.lineTo(20, -18);
+                ctx.lineTo(48, -38);
+                ctx.lineTo(36, 30);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Glowing Fiery Eyes
+                ctx.fillStyle = '#fde047';
+                ctx.beginPath();
+                ctx.arc(-14, -4, 6, 0, Math.PI * 2);
+                ctx.arc(14, -4, 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Distance warning ring around obstacle during ENCOUNTER
+            if (state.phase === 'ENCOUNTER') {
+                ctx.strokeStyle = 'rgba(251, 191, 36, 0.75)';
+                ctx.setLineDash([8, 6]);
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, 68 + Math.sin(time * 0.01) * 4, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        /**
+         * Vẽ máy bay chiến đấu/cứu hộ cánh quạt 2.5D bên trái màn hình (nhảy vọt lên khi trả lời đúng)
+         */
+        function drawHeroAircraft(time) {
+            const w = gameCanvas.width;
+            const h = gameCanvas.height;
+
+            // Update Dino-Runner Jump / Climb Physics when evading obstacle
+            if (state.phase === 'EVADING') {
+                state.planeJumpOffsetY += state.planeJumpVelocity;
+                state.planeJumpVelocity += 0.52; // Gravity pulling plane back to cruising altitude
+                if (state.planeJumpOffsetY >= 0) {
+                    state.planeJumpOffsetY = 0;
+                    state.planeJumpVelocity = 0;
+                }
+            } else {
+                state.planeJumpOffsetY *= 0.85;
+            }
+
+            // Impact recoil recovery
+            state.planeHitRecoilX *= 0.88;
+
+            // Pitch up sharply when jumping over an obstacle!
+            const jumpPitchAngle = state.planeJumpOffsetY * 0.0032;
+            state.targetRoll = Math.sin(time * 0.0022) * 0.05 + jumpPitchAngle;
+            state.targetPitch = Math.cos(time * 0.0018) * 5;
+            state.planeRoll += (state.targetRoll - state.planeRoll) * 0.12;
+            state.planePitch += (state.targetPitch - state.planePitch) * 0.12;
+
+            // Sync Yoke rotation with aircraft pitch/roll
+            const yokeEl = document.getElementById('flightYoke');
+            if (yokeEl) {
+                yokeEl.style.transform = `rotate(${(state.planeRoll * 140).toFixed(1)}deg)`;
+            }
+
+            const planeX = w * 0.25 + state.planeHitRecoilX;
+            const planeY = h * 0.50 + state.planePitch + state.planeJumpOffsetY;
+            const scale = Math.min(w, h) * 0.00125;
+
+            ctx.save();
+            ctx.translate(planeX, planeY);
+            ctx.rotate(state.planeRoll - 0.08);
+            ctx.scale(scale, scale);
+
+            // Wingtip White Vapor Trails
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(-40, -52);
+            ctx.lineTo(-320, -45);
+            ctx.moveTo(20, 48);
+            ctx.lineTo(-280, 65);
+            ctx.stroke();
+
+            // Far Wing (Top-Left perspective)
+            ctx.fillStyle = '#3f1d1d';
+            ctx.strokeStyle = '#991b1b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(10, -10);
+            ctx.lineTo(-55, -75);
+            ctx.lineTo(-20, -78);
+            ctx.lineTo(48, -12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Vertical Tail Fin & Rudder
+            ctx.fillStyle = '#572525';
+            ctx.beginPath();
+            ctx.moveTo(-115, -6);
+            ctx.lineTo(-148, -58);
+            ctx.lineTo(-122, -62);
+            ctx.lineTo(-82, -12);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Main Fuselage Body
+            const bodyGrad = ctx.createLinearGradient(0, -30, 0, 30);
+            bodyGrad.addColorStop(0, '#991b1b');
+            bodyGrad.addColorStop(0.5, '#5c1919');
+            bodyGrad.addColorStop(1, '#290b0b');
+            ctx.fillStyle = bodyGrad;
+            ctx.beginPath();
+            ctx.moveTo(125, 0);
+            ctx.quadraticCurveTo(95, -24, 15, -22);
+            ctx.lineTo(-125, -8);
+            ctx.lineTo(-125, 10);
+            ctx.lineTo(15, 24);
+            ctx.quadraticCurveTo(95, 22, 125, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Red/Orange Rim Highlight from Storm
+            ctx.strokeStyle = 'rgba(251, 146, 60, 0.6)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(118, -3);
+            ctx.quadraticCurveTo(60, -22, -110, -9);
+            ctx.stroke();
+
+            // Cockpit Glass Canopy
+            ctx.fillStyle = '#fef08a';
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(36, -18);
+            ctx.quadraticCurveTo(10, -40, -24, -17);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Star Emblem on Fuselage
+            drawStarEmblem(-42, 2, 13);
+
+            // Near Wing (Bottom-Right perspective)
+            const wingGrad = ctx.createLinearGradient(-30, 0, 60, 75);
+            wingGrad.addColorStop(0, '#7f1d1d');
+            wingGrad.addColorStop(1, '#3b0d0d');
+            ctx.fillStyle = wingGrad;
+            ctx.beginPath();
+            ctx.moveTo(45, 8);
+            ctx.lineTo(-15, 82);
+            ctx.lineTo(-52, 76);
+            ctx.lineTo(-12, 8);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            drawStarEmblem(-16, 46, 11);
+
+            // Spinning Nose Propeller & Spinner Cone
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath();
+            ctx.moveTo(142, 0);
+            ctx.lineTo(122, -12);
+            ctx.lineTo(122, 12);
+            ctx.closePath();
+            ctx.fill();
+
+            state.propellerAngle += 0.65;
+            const bladeH = Math.abs(Math.sin(state.propellerAngle)) * 68 + 12;
+            ctx.strokeStyle = 'rgba(226, 232, 240, 0.78)';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(128, -bladeH);
+            ctx.lineTo(128, bladeH);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawStarEmblem(cx, cy, r) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(248, 250, 252, 0.78)';
+            ctx.beginPath();
+            for (let i = 0; i < 5; i++) {
+                const a1 = (i * 72 - 90) * Math.PI / 180;
+                const a2 = (i * 72 + 36 - 90) * Math.PI / 180;
+                const x1 = cx + Math.cos(a1) * r;
+                const y1 = cy + Math.sin(a1) * r;
+                const x2 = cx + Math.cos(a2) * (r * 0.42);
+                const y2 = cy + Math.sin(a2) * (r * 0.42);
+                if (i === 0) ctx.moveTo(x1, y1);
+                else ctx.lineTo(x1, y1);
+                ctx.lineTo(x2, y2);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        /**
+         * =========================================================================
+         * 6. VẼ RADAR XANH LÁ XOAY TRÒN 360 ĐỘ & ĐỒNG HỒ TỐC ĐỘ
+         * =========================================================================
+         */
+        function drawGreenRadar() {
+            const w = radarCanvas.width;
+            const h = radarCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const radius = Math.min(cx, cy) - 6;
+
+            radarCtx.clearRect(0, 0, w, h);
+
+            // Dark Green Radar Background
+            radarCtx.fillStyle = '#041c11';
+            radarCtx.beginPath();
+            radarCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+            radarCtx.fill();
+
+            // Concentric Range Rings
+            radarCtx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
+            radarCtx.lineWidth = 1.5;
+            [0.33, 0.66, 1].forEach(ratio => {
+                radarCtx.beginPath();
+                radarCtx.arc(cx, cy, radius * ratio, 0, Math.PI * 2);
+                radarCtx.stroke();
+            });
+
+            // Crosshairs
+            radarCtx.beginPath();
+            radarCtx.moveTo(cx - radius, cy);
+            radarCtx.lineTo(cx + radius, cy);
+            radarCtx.moveTo(cx, cy - radius);
+            radarCtx.lineTo(cx, cy + radius);
+            radarCtx.stroke();
+
+            // Rotating Sweep Beam
+            state.radarAngle = (state.radarAngle + 0.045) % (Math.PI * 2);
+            radarCtx.save();
+            radarCtx.translate(cx, cy);
+            radarCtx.rotate(state.radarAngle);
+
+            const sweepGrad = radarCtx.createLinearGradient(0, 0, radius, 0);
+            sweepGrad.addColorStop(0, 'rgba(16, 185, 129, 0.55)');
+            sweepGrad.addColorStop(1, 'rgba(52, 211, 153, 0.05)');
+            radarCtx.fillStyle = sweepGrad;
+            radarCtx.beginPath();
+            radarCtx.moveTo(0, 0);
+            radarCtx.arc(0, 0, radius, -0.55, 0);
+            radarCtx.closePath();
+            radarCtx.fill();
+
+            // Leading Bright Scan Line
+            radarCtx.strokeStyle = '#34d399';
+            radarCtx.lineWidth = 2.5;
+            radarCtx.beginPath();
+            radarCtx.moveTo(0, 0);
+            radarCtx.lineTo(radius, 0);
+            radarCtx.stroke();
+            radarCtx.restore();
+
+            // Obstacle Blip Dot on Radar
+            if (state.status === 'PLAYING') {
+                const blipDist = radius * 0.58;
+                const bx = cx + Math.cos(0.4) * blipDist;
+                const by = cy - Math.sin(0.4) * blipDist;
+                radarCtx.fillStyle = state.phase === 'ENCOUNTER' ? '#ef4444' : '#fde047';
+                radarCtx.beginPath();
+                radarCtx.arc(bx, by, 4, 0, Math.PI * 2);
+                radarCtx.fill();
+            }
+        }
+
+        function drawAirspeedDial(time) {
+            const w = airspeedCanvas.width;
+            const h = airspeedCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const r = Math.min(cx, cy) - 6;
+
+            speedCtx.clearRect(0, 0, w, h);
+
+            // Speed Tick Marks
+            speedCtx.strokeStyle = 'rgba(226, 232, 240, 0.55)';
+            speedCtx.lineWidth = 2;
+            for (let i = 0; i <= 10; i++) {
+                const ang = (Math.PI * 0.75) + (i / 10) * (Math.PI * 1.5);
+                const x1 = cx + Math.cos(ang) * (r - 8);
+                const y1 = cy + Math.sin(ang) * (r - 8);
+                const x2 = cx + Math.cos(ang) * r;
+                const y2 = cy + Math.sin(ang) * r;
+                speedCtx.beginPath();
+                speedCtx.moveTo(x1, y1);
+                speedCtx.lineTo(x2, y2);
+                speedCtx.stroke();
+            }
+
+            // Dynamic Speed Fluctuation & Needle
+            const currentSpeed = state.status === 'PLAYING'
+                ? Math.round(215 + Math.sin(time * 0.005) * 6 + (state.phase === 'EVADING' ? 28 : 0))
+                : 0;
+            document.getElementById('speedValue').textContent = currentSpeed;
+
+            const speedRatio = Math.min(1, Math.max(0, currentSpeed / 320));
+            const needleAng = (Math.PI * 0.75) + speedRatio * (Math.PI * 1.5);
+
+            speedCtx.strokeStyle = '#ef4444';
+            speedCtx.lineWidth = 3;
+            speedCtx.beginPath();
+            speedCtx.moveTo(cx, cy);
+            speedCtx.lineTo(cx + Math.cos(needleAng) * (r - 10), cy + Math.sin(needleAng) * (r - 10));
+            speedCtx.stroke();
+
+            speedCtx.fillStyle = '#f8fafc';
+            speedCtx.beginPath();
+            speedCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+            speedCtx.fill();
+        }
+
+        /**
+         * =========================================================================
+         * 7. VÒNG LẶP CHÍNH (MAIN ANIMATION LOOP)
+         * =========================================================================
+         */
+        function gameLoop(time) {
+            drawStormEnvironment(time);
+            updateAndDrawObstacle(time);
+            drawHeroAircraft(time);
+            drawGreenRadar();
+            drawAirspeedDial(time);
+            requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * =========================================================================
+         * 8. LOGIC CÂU HỎI, THANH NHIÊN LIỆU & PHẢN HỒI BUỒNG LÁI
+         * =========================================================================
+         */
+        function updateFuelHUD() {
+            const pct = Math.max(0, (state.fuel / state.maxFuel) * 100);
+            const fuelFill = document.getElementById('fuelFill');
+            const fuelText = document.getElementById('fuelText');
+            const fuelIconBox = document.getElementById('fuelIconBox');
+            const fuelPanel = document.getElementById('fuelContainerPanel');
+
+            fuelText.textContent = state.fuel;
+            fuelFill.style.height = `${pct}%`;
+
+            // Smooth color shift: Green (1000-700) -> Amber/Yellow (600-400) -> Red (300-0)
+            let barColor = '#10b981'; // Emerald Green
+            let textClass = 'text-emerald-400';
+            let iconClass = 'text-emerald-400 border-emerald-400/60 shadow-[0_0_12px_rgba(16,185,129,0.4)]';
+            let panelBorder = 'rgba(52, 211, 153, 0.55)';
+            let panelShadow = '0 0 28px rgba(16, 185, 129, 0.3), inset 0 0 14px rgba(0, 0, 0, 0.85)';
+
+            if (state.fuel <= 300) {
+                barColor = '#ef4444'; // Danger Red
+                textClass = 'text-red-500 animate-pulse';
+                iconClass = 'text-red-500 border-red-500/80 animate-pulse shadow-[0_0_16px_rgba(239,68,68,0.7)]';
+                panelBorder = 'rgba(239, 68, 68, 0.85)';
+                panelShadow = '0 0 32px rgba(239, 68, 68, 0.55), inset 0 0 14px rgba(0, 0, 0, 0.85)';
+            } else if (state.fuel <= 600) {
+                barColor = '#f59e0b'; // Warning Amber
+                textClass = 'text-amber-400';
+                iconClass = 'text-amber-400 border-amber-400/70 shadow-[0_0_14px_rgba(245,158,11,0.5)]';
+                panelBorder = 'rgba(245, 158, 11, 0.7)';
+                panelShadow = '0 0 28px rgba(245, 158, 11, 0.38), inset 0 0 14px rgba(0, 0, 0, 0.85)';
+            }
+
+            fuelText.className = textClass;
+            fuelFill.style.backgroundColor = barColor;
+            fuelFill.style.boxShadow = `0 0 18px ${barColor}`;
+            fuelIconBox.className = `mt-2 w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-black/60 border-2 flex items-center justify-center transition-colors duration-300 ${iconClass}`;
+            fuelPanel.style.borderColor = panelBorder;
+            fuelPanel.style.boxShadow = panelShadow;
+        }
+
+        function updateFlightPhaseBadge() {
+            const badge = document.getElementById('flightPhaseBadge');
+            const qNum = Math.min(state.currentQIndex + 1, 20);
+            if (state.phase === 'FLYING') {
+                badge.innerHTML = `Chặng <span class="text-white font-bold">${qNum}</span> / 20 • <span class="text-emerald-400">Đang bay tới chướng ngại vật...</span>`;
+            } else if (state.phase === 'ENCOUNTER') {
+                badge.innerHTML = `Chặng <span class="text-white font-bold">${qNum}</span> / 20 • <span class="text-amber-400 animate-pulse">GẶP CHƯỚNG NGẠI VẬT!</span>`;
+            } else if (state.phase === 'EVADING') {
+                badge.innerHTML = `Chặng <span class="text-white font-bold">${qNum}</span> / 20 • <span class="text-emerald-400 font-bold">VƯỢT CHƯỚNG NGẠI VẬT AN TOÀN!</span>`;
+            } else if (state.phase === 'IMPACT') {
+                badge.innerHTML = `Chặng <span class="text-white font-bold">${qNum}</span> / 20 • <span class="text-red-400 font-bold">VA CHẠM NHIỄU ĐỘNG (-100 NL)</span>`;
+            }
+        }
+
+        function updateFlightTelemetry() {
+            document.getElementById('altitudeDisplay').textContent = `${state.altitude} M`;
+            document.getElementById('distanceDisplay').textContent = `${state.distance.toLocaleString('en-US')} M`;
+
+            const progressPct = (state.currentQIndex / QUESTIONS_BANK.length) * 100;
+            document.getElementById('runwayProgressBar').style.width = `${progressPct}%`;
+            updateFlightPhaseBadge();
+        }
+
+        function showQuestionPopup() {
+            const consoleEl = document.getElementById('questionConsole');
+            consoleEl.classList.remove('question-modal-hidden');
+            consoleEl.classList.add('question-modal-visible');
+            loadQuestion(state.currentQIndex);
+        }
+
+        function hideQuestionPopup() {
+            const consoleEl = document.getElementById('questionConsole');
+            consoleEl.classList.remove('question-modal-visible');
+            consoleEl.classList.add('question-modal-hidden');
+        }
+
+        function loadQuestion(index) {
+            state.isAnsweringLocked = false;
+            const qData = QUESTIONS_BANK[index];
+
+            // Tráo ngẫu nhiên thứ tự 4 đáp án A, B, C, D mỗi lần hiển thị câu hỏi
+            const pairedOptions = qData.options.map((text, idx) => ({
+                text,
+                isCorrect: idx === qData.correct
+            }));
+            for (let i = pairedOptions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pairedOptions[i], pairedOptions[j]] = [pairedOptions[j], pairedOptions[i]];
+            }
+            state.currentCorrectIdx = pairedOptions.findIndex(item => item.isCorrect);
+
+            document.getElementById('qIndexText').textContent = String(index + 1).padStart(2, '0');
+            document.getElementById('obstacleTitle').textContent = `CẢNH BÁO: ${qData.obstacle}`;
+            document.getElementById('obstacleIcon').innerHTML = `<i class="fa-solid ${qData.icon}"></i>`;
+            document.getElementById('questionText').textContent = qData.question;
+
+            const feedback = document.getElementById('feedbackBanner');
+            feedback.style.opacity = '0';
+
+            const grid = document.getElementById('answersGrid');
+            grid.innerHTML = '';
+
+            const labels = ['A', 'B', 'C', 'D'];
+            pairedOptions.forEach((optObj, optIdx) => {
+                const btn = document.createElement('button');
+                btn.className = 'answer-btn w-full text-left px-3 py-2.5 sm:px-3.5 sm:py-3 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm text-slate-100 cursor-pointer';
+                btn.innerHTML = `
+                    <span class="shrink-0 w-7 h-7 rounded-md bg-white/10 border border-white/20 flex items-center justify-center font-hud font-bold text-xs sm:text-sm text-amber-400">
+                        ${labels[optIdx]}
+                    </span>
+                    <span class="leading-snug">${optObj.text}</span>
+                `;
+                btn.addEventListener('click', () => handleAnswerSelection(optIdx, btn));
+                grid.appendChild(btn);
+            });
+
+            updateFlightTelemetry();
+        }
+
+        function flashCockpitButtons(isSuccess) {
+            const buttons = document.querySelectorAll('#cockpitSwitchCluster .cockpit-btn');
+            buttons.forEach(btn => {
+                btn.classList.remove('active', 'warn');
+                btn.classList.add(isSuccess ? 'active' : 'warn');
+            });
+            if (!isSuccess) {
+                setTimeout(() => {
+                    buttons.forEach((btn, idx) => {
+                        btn.classList.remove('warn');
+                        if (idx !== 2 && idx !== 5) btn.classList.add('active');
+                    });
+                }, 1300);
+            }
+        }
+
+        function handleAnswerSelection(selectedIdx, clickedBtn) {
+            if (state.isAnsweringLocked || state.status !== 'PLAYING') return;
+            state.isAnsweringLocked = true;
+
+            const correctIdx = state.currentCorrectIdx;
+            const allButtons = document.querySelectorAll('#answersGrid .answer-btn');
+            allButtons.forEach(b => b.disabled = true);
+
+            const feedback = document.getElementById('feedbackBanner');
+            const yokeLed = document.getElementById('yokeStatusLed');
+
+            if (selectedIdx === correctIdx) {
+                // === CORRECT ANSWER: GREEN FLASH + CHIME + DINO-JUMP EVASION ===
+                clickedBtn.classList.add('answer-correct');
+                audio.playCorrect();
+                triggerGreenFlash();
+                flashCockpitButtons(true);
+
+                state.correctCount++;
+                state.distance = Math.max(0, 5000 - (state.currentQIndex + 1) * 250);
+                state.altitude = Math.min(2200, state.altitude + 25);
+
+                yokeLed.setAttribute('fill', '#10b981');
+                document.getElementById('throttleHandle').style.bottom = '84%';
+                document.getElementById('throttlePct').textContent = '98%';
+
+                feedback.textContent = '✓ CHÍNH XÁC! Kéo cần lái vọt qua chướng ngại vật, giữ nguyên nhiên liệu.';
+                feedback.className = 'mt-2 min-h-[20px] text-center text-xs font-bold text-emerald-400 opacity-100';
+
+                updateFlightTelemetry();
+
+                // Hide question box and trigger Dino-style jump over the obstacle
+                setTimeout(() => {
+                    hideQuestionPopup();
+                    state.phase = 'EVADING';
+                    state.planeJumpVelocity = -13.5; // Jump upward over obstacle!
+                    updateFlightPhaseBadge();
+                    document.getElementById('throttleHandle').style.bottom = '65%';
+                    document.getElementById('throttlePct').textContent = '85%';
+                }, 850);
+
+            } else {
+                // === WRONG ANSWER: RED ALERT FLASH + SHAKE + COLLISION + -100 FUEL ===
+                clickedBtn.classList.add('answer-wrong');
+                allButtons[correctIdx].classList.add('answer-correct');
+                audio.playWrongAlarm();
+                triggerRedAlertAndShake();
+                flashCockpitButtons(false);
+
+                // Deduct 100 fuel & drop altitude
+                state.fuel = Math.max(0, state.fuel - 100);
+                state.altitude = Math.max(250, state.altitude - 160);
+                state.distance = Math.max(0, 5000 - (state.currentQIndex + 1) * 250);
+                state.planeHitRecoilX = -28;
+
+                updateFuelHUD();
+                updateFlightTelemetry();
+
+                yokeLed.setAttribute('fill', '#ef4444');
+                document.getElementById('throttleHandle').style.bottom = '42%';
+                document.getElementById('throttlePct').textContent = '54%';
+
+                feedback.textContent = `⚠ CẢNH BÁO VA CHẠM! (-100 Nhiên liệu). Đáp án đúng: ${['A', 'B', 'C', 'D'][correctIdx]}`;
+                feedback.className = 'mt-2 min-h-[20px] text-center text-xs font-bold text-red-400 opacity-100';
+
+                setTimeout(() => {
+                    hideQuestionPopup();
+                    if (state.fuel <= 0) {
+                        finishGame(false);
+                        return;
+                    }
+                    state.phase = 'IMPACT';
+                    updateFlightPhaseBadge();
+                    document.getElementById('throttleHandle').style.bottom = '65%';
+                    document.getElementById('throttlePct').textContent = '85%';
+                }, 1150);
+            }
+        }
+
+        function triggerGreenFlash() {
+            const overlay = document.getElementById('screenFlashOverlay');
+            overlay.classList.remove('red-alert-active', 'green-flash-active');
+            void overlay.offsetWidth;
+            overlay.classList.add('green-flash-active');
+        }
+
+        function triggerRedAlertAndShake() {
+            const overlay = document.getElementById('screenFlashOverlay');
+            overlay.classList.remove('red-alert-active', 'green-flash-active');
+            void overlay.offsetWidth;
+            overlay.classList.add('red-alert-active');
+
+            document.body.classList.remove('shake-intense');
+            void document.body.offsetWidth;
+            document.body.classList.add('shake-intense');
+
+            triggerLightning();
+        }
+
+        function finishGame(isVictory) {
+            state.status = isVictory ? 'VICTORY' : 'GAMEOVER';
+            const endModal = document.getElementById('endModal');
+            const card = document.getElementById('endModalCard');
+            const iconBox = document.getElementById('endIconContainer');
+            const title = document.getElementById('endTitle');
+            const subtitle = document.getElementById('endSubtitle');
+
+            document.getElementById('statFuel').textContent = `${state.fuel} / 1000`;
+            document.getElementById('statCorrect').textContent = `${state.correctCount} / 20`;
+
+            if (isVictory) {
+                audio.playVictory();
+                state.distance = 0;
+                updateFlightTelemetry();
+
+                card.className = 'hud-panel max-w-lg w-full rounded-3xl p-6 sm:p-8 border-2 border-emerald-500/60 text-center shadow-[0_0_50px_rgba(16,185,129,0.35)]';
+                iconBox.className = 'w-16 h-16 mx-auto rounded-full bg-emerald-500/20 border-2 border-emerald-400 text-emerald-400 flex items-center justify-center text-3xl mb-3';
+                iconBox.innerHTML = '<i class="fa-solid fa-plane-arrival"></i>';
+                title.textContent = 'HẠ CÁNH AN TOÀN!';
+                title.className = 'font-hud text-2xl sm:text-3xl font-black uppercase mb-2 text-emerald-400';
+                subtitle.textContent = 'Xuất sắc! Cơ trưởng đã vượt qua toàn bộ 20 vùng nhiễu động và đưa chuyến bay tiếp đất an toàn xuống đường băng.';
+
+                let rank = 'PHI CÔNG TẬP SỰ';
+                if (state.fuel >= 900) rank = 'CƠ TRƯỞNG HUYỀN THOẠI';
+                else if (state.fuel >= 700) rank = 'CƠ TRƯỞNG XUẤT SẮC';
+                else if (state.fuel >= 400) rank = 'PHI CÔNG DŨNG CẢM';
+                document.getElementById('statRank').textContent = rank;
+            } else {
+                audio.playWrongAlarm();
+                card.className = 'hud-panel max-w-lg w-full rounded-3xl p-6 sm:p-8 border-2 border-red-500/60 text-center shadow-[0_0_50px_rgba(239,68,68,0.4)]';
+                iconBox.className = 'w-16 h-16 mx-auto rounded-full bg-red-500/20 border-2 border-red-500 text-red-500 flex items-center justify-center text-3xl mb-3 animate-bounce';
+                iconBox.innerHTML = '<i class="fa-solid fa-fire-extinguisher"></i>';
+                title.textContent = 'CẠN KIỆT NHIÊN LIỆU!';
+                title.className = 'font-hud text-2xl sm:text-3xl font-black uppercase mb-2 text-red-500';
+                subtitle.textContent = 'Hộp đen đã ghi nhận sự cố! Nhiên liệu giảm về 0 trước khi tiếp cận đường băng. Hãy ôn tập kiến thức và thử lại.';
+                document.getElementById('statRank').textContent = 'CẦN BỒI DƯỠNG';
+            }
+
+            endModal.classList.remove('hidden');
+        }
+
+        function resetAndStartGame() {
+            audio.startEngineAmbience();
+            audio.playClick();
+
+            state.status = 'PLAYING';
+            state.phase = 'FLYING';
+            state.currentQIndex = 0;
+            state.fuel = 1000;
+            state.altitude = 2000;
+            state.distance = 5000;
+            state.correctCount = 0;
+            state.isAnsweringLocked = false;
+            state.planeJumpOffsetY = 0;
+            state.planeJumpVelocity = 0;
+            state.planeHitRecoilX = 0;
+
+            document.getElementById('startModal').classList.add('hidden');
+            document.getElementById('pauseModal').classList.add('hidden');
+            document.getElementById('endModal').classList.add('hidden');
+            hideQuestionPopup();
+
+            updateFuelHUD();
+            updateFlightTelemetry();
+            spawnNextObstacle();
+        }
+
+        // Decorative Cockpit Switches Interaction
+        function toggleCockpitSwitch(btn) {
+            audio.playClick();
+            btn.classList.toggle('active');
+        }
+
+        /**
+         * =========================================================================
+         * 9. GẮN SỰ KIỆN ĐIỀU KHIỂN (EVENT LISTENERS)
+         * =========================================================================
+         */
+        document.getElementById('btnStartGame').addEventListener('click', resetAndStartGame);
+        document.getElementById('btnPlayAgain').addEventListener('click', resetAndStartGame);
+        document.getElementById('btnRestartTop').addEventListener('click', resetAndStartGame);
+        document.getElementById('btnRestartModal').addEventListener('click', resetAndStartGame);
+
+        document.getElementById('btnMenu').addEventListener('click', () => {
+            if (state.status !== 'PLAYING') return;
+            audio.playClick();
+            state.status = 'PAUSED';
+            document.getElementById('pauseModal').classList.remove('hidden');
+        });
+
+        document.getElementById('btnResume').addEventListener('click', () => {
+            audio.playClick();
+            state.status = 'PLAYING';
+            document.getElementById('pauseModal').classList.add('hidden');
+        });
+
+        document.getElementById('btnSound').addEventListener('click', () => {
+            const muted = audio.toggleMute();
+            const icon = document.getElementById('soundIcon');
+            const btn = document.getElementById('btnSound');
+            if (muted) {
+                icon.className = 'fa-solid fa-volume-xmark text-base';
+                btn.classList.remove('text-emerald-400');
+                btn.classList.add('text-red-400');
+            } else {
+                icon.className = 'fa-solid fa-volume-high text-base';
+                btn.classList.remove('text-red-400');
+                btn.classList.add('text-emerald-400');
+                audio.playClick();
+            }
+        });
+
+        // Boot up simulation on window load
+        window.onload = function () {
+            resizeCanvases();
+            initAtmosphereParticles();
+            updateFuelHUD();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
